@@ -1,0 +1,6 @@
+{
+  "name": "AI Study Companion",
+  "description": "Unified multimodal study companion for lecture videos, textbooks, PDFs, and PPTs with source-grounded tutoring, adaptive tests, and progress evaluation in Hindi and English.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
