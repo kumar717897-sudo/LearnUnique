@@ -23,7 +23,7 @@ The goal of LearnUnique is to support students with a more personalized and inte
 Built using Google AI Studio and the technologies included in the project repository.
 
 ## Demo
-Demo video: https://youtube.com/shorts/RJ-Q73LTgjc?si=VaqKpt1ziOfMgbRD
+Demo video: https://youtube.com/shorts/yVLFJb_lWb0?si=bDHcP5a9bvd8a3fj6
 
 ## Repository
 Source code: https://github.com/kumar717897-sudo/LearnUnique
