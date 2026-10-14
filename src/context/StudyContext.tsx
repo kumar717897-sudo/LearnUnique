@@ -23,6 +23,8 @@ interface StudyContextType {
   clearChatHistory: () => void;
   quizSessions: QuizSession[];
   addQuizSession: (session: QuizSession) => void;
+  refreshQuizHistory: () => Promise<QuizSession[]>;
+  lastRefreshedAt: Date | null;
   synthesisData: SynthesisData | null;
   setSynthesisData: (data: SynthesisData | null) => void;
   activeChunkInspection: { chunk?: DocumentChunk; citation?: Citation } | null;
@@ -155,14 +157,119 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return [];
   });
 
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+
   useEffect(() => {
     try {
       localStorage.setItem('study_companion_quizzes', JSON.stringify(quizSessions));
     } catch {}
   }, [quizSessions]);
 
+  // Sync across tabs if user completes a quiz in another tab
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'study_companion_quizzes') {
+        try {
+          const updated = e.newValue ? JSON.parse(e.newValue) : [];
+          if (Array.isArray(updated)) {
+            setQuizSessions(updated);
+            setLastRefreshedAt(new Date());
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   const addQuizSession = (session: QuizSession) => {
-    setQuizSessions((prev) => [session, ...prev]);
+    setQuizSessions((prev) => {
+      const updated = [session, ...prev.filter((s) => s.id !== session.id)];
+      try {
+        localStorage.setItem('study_companion_quizzes', JSON.stringify(updated));
+      } catch {}
+      // Sync to server API in background
+      fetch('/api/history/quizzes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session }),
+      }).catch(() => {});
+      return updated;
+    });
+  };
+
+  const refreshQuizHistory = async (): Promise<QuizSession[]> => {
+    try {
+      // 1. Read directly from persistent browser storage (supporting all common aliases)
+      const saved =
+        localStorage.getItem('study_companion_quizzes') ||
+        localStorage.getItem('quiz_history') ||
+        localStorage.getItem('quizzes') ||
+        localStorage.getItem('quizSessions');
+
+      let localSessions: QuizSession[] = [];
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            localSessions = parsed;
+          } else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.sessions)) localSessions = parsed.sessions;
+            else if (Array.isArray(parsed.history)) localSessions = parsed.history;
+            else if (Array.isArray(parsed.quizzes)) localSessions = parsed.quizzes;
+          }
+        } catch (e) {
+          console.warn('Failed to parse saved quizzes from localStorage:', e);
+        }
+      }
+
+      // 2. Fetch authoritative records from backend API
+      let serverSessions: QuizSession[] = [];
+      try {
+        const res = await fetch('/api/history/quizzes');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.sessions)) {
+            serverSessions = data.sessions;
+          }
+        }
+      } catch {
+        // Fall back gracefully to local storage
+      }
+
+      // 3. Merge server and local storage records, deduplicating by ID
+      const sessionMap = new Map<string, QuizSession>();
+      for (const s of serverSessions) {
+        if (s && s.id) sessionMap.set(s.id, s);
+      }
+      for (const s of localSessions) {
+        if (s && s.id) sessionMap.set(s.id, s);
+      }
+
+      const mergedList = Array.from(sessionMap.values()).map((s) => ({
+        ...s,
+        questions: Array.isArray(s.questions) ? [...s.questions] : [],
+      }));
+
+      // Sort by newest first
+      mergedList.sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime() || 0;
+        const timeB = new Date(b.timestamp).getTime() || 0;
+        return timeB - timeA;
+      });
+
+      // 4. Update both state and storage
+      setQuizSessions(mergedList);
+      setLastRefreshedAt(new Date());
+
+      try {
+        localStorage.setItem('study_companion_quizzes', JSON.stringify(mergedList));
+      } catch {}
+
+      return mergedList;
+    } catch (err: any) {
+      throw new Error(err?.message || 'Failed to reload history from persistent storage');
+    }
   };
 
   // 5. Synthesis Data with Document Binding & Invalidation
@@ -272,6 +379,8 @@ export const StudyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearChatHistory,
         quizSessions,
         addQuizSession,
+        refreshQuizHistory,
+        lastRefreshedAt,
         synthesisData,
         setSynthesisData,
         activeChunkInspection,

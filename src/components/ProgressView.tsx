@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart2,
   CheckCircle2,
@@ -6,13 +6,14 @@ import {
   TrendingUp,
   Award,
   Calendar,
-  Clock,
   ArrowRight,
   RotateCcw,
   BarChart,
+  RefreshCw,
 } from 'lucide-react';
 import { useStudy } from '../context/StudyContext';
 import { translations } from '../translations';
+import { QuizSession } from '../types';
 import { WorkflowFooter } from './WorkflowFooter';
 
 interface ProgressViewProps {
@@ -26,11 +27,82 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
   onNavigateToPractice,
   onNavigateToEvaluation,
 }) => {
-  const { language, quizSessions } = useStudy();
+  const { language, quizSessions, refreshQuizHistory, lastRefreshedAt } = useStudy();
   const t = translations[language].progressScreen;
 
+  const [displayedSessions, setDisplayedSessions] = useState<QuizSession[]>(quizSessions);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshSuccess, setRefreshSuccess] = useState<string | null>(null);
+
+  // Synchronize local view state whenever context quizSessions change
+  useEffect(() => {
+    setDisplayedSessions(quizSessions);
+  }, [quizSessions]);
+
+  const handleRefreshHistory = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshError(null);
+    setRefreshSuccess(null);
+    try {
+      const prevSerialized = JSON.stringify(displayedSessions);
+      const prevCount = displayedSessions.length;
+
+      // 1. Fetch fresh authoritative records from storage and server
+      const latest = await refreshQuizHistory();
+
+      // 2. Immediately update local view state so rendered history updates instantly
+      setDisplayedSessions(latest);
+
+      const newSerialized = JSON.stringify(latest);
+      const newCount = latest.length;
+      const dataChanged = prevSerialized !== newSerialized;
+
+      // 3. Clear, accurate feedback based on actual change detection
+      if (!dataChanged) {
+        if (newCount === 0) {
+          setRefreshSuccess(
+            language === 'hi'
+              ? 'इतिहास अद्यतित है। अभी तक कोई अभ्यास परीक्षा दर्ज नहीं है।'
+              : 'History is up to date. No practice test records found.'
+          );
+        } else {
+          setRefreshSuccess(
+            language === 'hi'
+              ? `इतिहास पहले से अद्यतित है (${newCount} ${newCount === 1 ? 'सत्र' : 'सत्र'})। कोई नया बदलाव नहीं मिला।`
+              : `History is up to date (${newCount} completed ${newCount === 1 ? 'session' : 'sessions'}). No changes detected.`
+          );
+        }
+      } else {
+        if (newCount > prevCount) {
+          const added = newCount - prevCount;
+          setRefreshSuccess(
+            language === 'hi'
+              ? `इतिहास सफलतापूर्वक ताज़ा हुआ! ${added} नया ${added === 1 ? 'सत्र' : 'सत्र'} लोड हुआ (कुल ${newCount})।`
+              : `History refreshed successfully! Loaded ${added} new ${added === 1 ? 'session' : 'sessions'} (${newCount} total).`
+          );
+        } else {
+          setRefreshSuccess(
+            language === 'hi'
+              ? `इतिहास सफलतापूर्वक ताज़ा हुआ! अद्यतित रिकॉर्ड प्रदर्शित (कुल ${newCount} सत्र)।`
+              : `History refreshed successfully! Updated records displayed (${newCount} total).`
+          );
+        }
+      }
+    } catch (err: any) {
+      setRefreshError(
+        language === 'hi'
+          ? 'प्रगति इतिहास ताज़ा करने में समस्या आई। कृपया पुनः प्रयास करें।'
+          : (err?.message || 'Failed to refresh progress history. Please try again.')
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // STRICT ZERO FAKE DATA CHECK: If no tests have been completed, MUST BE EMPTY
-  if (quizSessions.length === 0) {
+  if (displayedSessions.length === 0) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 flex items-center justify-center mx-auto mb-4">
@@ -42,12 +114,45 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
         <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6">
           {t.emptyDesc}
         </p>
-        <button
-          onClick={onNavigateToPractice}
-          className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-semibold transition-all shadow-lg shadow-purple-950/60 cursor-pointer"
-        >
-          {t.startPracticeBtn}
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={onNavigateToPractice}
+            className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs sm:text-sm font-semibold transition-all shadow-lg shadow-purple-950/60 cursor-pointer"
+          >
+            {t.startPracticeBtn}
+          </button>
+          <button
+            onClick={handleRefreshHistory}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer disabled:opacity-50"
+            title={t.refreshHistory}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-purple-400' : ''}`} />
+            <span>{isRefreshing ? (language === 'hi' ? 'ताज़ा हो रहा है...' : 'Refreshing...') : t.refreshHistory}</span>
+          </button>
+        </div>
+
+        {refreshSuccess && (
+          <div className="mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs max-w-md mx-auto flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{refreshSuccess}</span>
+          </div>
+        )}
+
+        {refreshError && (
+          <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs max-w-md mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{refreshError}</span>
+            </div>
+            <button
+              onClick={handleRefreshHistory}
+              className="px-2.5 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-white text-xs font-medium transition-colors cursor-pointer"
+            >
+              {translations[language].retry}
+            </button>
+          </div>
+        )}
 
         {/* Contextual Workflow Navigation */}
         <WorkflowFooter
@@ -73,14 +178,14 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
   }
 
   // Real data calculations from actual quiz sessions
-  const totalTests = quizSessions.length;
-  const totalQuestions = quizSessions.reduce((acc, s) => acc + s.totalQuestions, 0);
-  const totalCorrect = quizSessions.reduce((acc, s) => acc + s.score, 0);
+  const totalTests = displayedSessions.length;
+  const totalQuestions = displayedSessions.reduce((acc, s) => acc + s.totalQuestions, 0);
+  const totalCorrect = displayedSessions.reduce((acc, s) => acc + s.score, 0);
   const overallAccuracy = Math.round((totalCorrect / Math.max(1, totalQuestions)) * 100);
 
   // Group by topic
   const topicMap: Record<string, { total: number; correct: number }> = {};
-  quizSessions.forEach((session) => {
+  displayedSessions.forEach((session) => {
     session.questions.forEach((q) => {
       const top = q.topic || session.topic || 'General';
       if (!topicMap[top]) topicMap[top] = { total: 0, correct: 0 };
@@ -120,14 +225,57 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onNavigateToEvaluation}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-900/30 border border-purple-500/30 text-purple-300 hover:bg-purple-900/50 text-xs font-medium transition-all cursor-pointer self-start sm:self-center"
-        >
-          <span>{translations[language].practiceScreen.viewInEvaluation}</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-center">
+          <button
+            onClick={handleRefreshHistory}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+            title={t.refreshHistory}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-purple-400' : ''}`} />
+            <span>{isRefreshing ? (language === 'hi' ? 'ताज़ा हो रहा है...' : 'Refreshing...') : t.refreshHistory}</span>
+          </button>
+
+          <button
+            onClick={onNavigateToEvaluation}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-900/30 border border-purple-500/30 text-purple-300 hover:bg-purple-900/50 text-xs font-medium transition-all cursor-pointer"
+          >
+            <span>{translations[language].practiceScreen.viewInEvaluation}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
+
+      {refreshSuccess && (
+        <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{refreshSuccess}</span>
+          </div>
+          <button
+            onClick={() => setRefreshSuccess(null)}
+            className="text-emerald-400 hover:text-emerald-200 text-xs cursor-pointer p-1"
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {refreshError && (
+        <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{refreshError}</span>
+          </div>
+          <button
+            onClick={handleRefreshHistory}
+            className="px-2.5 py-1 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-white text-xs font-medium transition-colors cursor-pointer"
+          >
+            {translations[language].retry}
+          </button>
+        </div>
+      )}
 
       {/* Top Real Metrics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -256,7 +404,7 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {quizSessions.map((session) => (
+              {displayedSessions.map((session) => (
                 <tr key={session.id} className="text-slate-300">
                   <td className="py-3 font-mono text-[11px] text-slate-400">
                     {session.timestamp}

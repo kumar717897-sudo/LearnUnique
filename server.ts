@@ -552,6 +552,28 @@ ${contextBlocks}
   }
 });
 
+// In-memory quiz sessions storage on server
+let savedQuizHistory: any[] = [];
+
+// Quiz History API
+app.get('/api/history/quizzes', (req, res) => {
+  res.json({ success: true, sessions: savedQuizHistory });
+});
+
+app.post('/api/history/quizzes', (req, res) => {
+  try {
+    const { session, sessions } = req.body;
+    if (Array.isArray(sessions)) {
+      savedQuizHistory = sessions;
+    } else if (session && typeof session === 'object' && session.id) {
+      savedQuizHistory = [session, ...savedQuizHistory.filter((s: any) => s.id !== session.id)];
+    }
+    res.json({ success: true, count: savedQuizHistory.length, sessions: savedQuizHistory });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update quiz history', details: err?.message });
+  }
+});
+
 // 4. RAG & System Evaluation Endpoint
 // Faithfulness, Relevancy, Precision, Recall calculation
 app.post('/api/evaluate/rag', async (req, res) => {

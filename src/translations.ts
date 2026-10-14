@@ -153,12 +153,14 @@ export const translations = {
       date: 'Date',
       topic: 'Topic',
       accuracy: 'Accuracy',
+      refreshHistory: 'Refresh History',
     },
 
     // Evaluation Screen (Separate Screen as requested)
     evaluationScreen: {
       title: 'RAG & System Evaluation Metrics',
       subtitle: 'Strict evaluation of Faithfulness, Relevancy, Precision, and Recall from real test data.',
+      refreshHistory: 'Refresh History',
       emptyTitle: 'No evaluation metrics yet',
       emptyDesc: 'Evaluation requires completed tests to calculate real mathematical metrics. No fake scores shown.',
       ragMetricsHeader: 'Retrieval-Augmented Generation (RAG) Evaluation',
@@ -344,12 +346,14 @@ export const translations = {
       date: 'तारीख',
       topic: 'विषय',
       accuracy: 'सटीकता',
+      refreshHistory: 'इतिहास ताज़ा करें',
     },
 
     // Evaluation Screen
     evaluationScreen: {
       title: 'RAG एवं सिस्टम मूल्यांकन मेट्रिक्स',
       subtitle: 'वास्तविक परीक्षा डेटा से Faithfulness, Relevancy, Precision व Recall का सख्त मूल्यांकन।',
+      refreshHistory: 'इतिहास ताज़ा करें',
       emptyTitle: 'अभी तक कोई मूल्यांकन मेट्रिक्स नहीं हैं',
       emptyDesc: 'मूल्यांकन के लिए पूर्ण की गई परीक्षाओं की आवश्यकता है। कोई नकली स्कोर नहीं दिखाया जाता।',
       ragMetricsHeader: 'RAG मूल्यांकन मेट्रिक्स (गणितीय गणना)',
